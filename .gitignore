@@ -7,3 +7,8 @@ target/
 .vscode/
 .env
 *.env
+personal-resume.md
+resume.md
+test-antihallucination.sh
+.claude/memory/
+nonono/
