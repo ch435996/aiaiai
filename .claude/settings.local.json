@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(mkdir -p __TRACKED_VAR__/.claude/skills)",
+      "Bash(cp -r .claude/skills/session-summary __TRACKED_VAR__/.claude/skills/)"
+    ]
+  }
+}

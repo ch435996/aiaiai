@@ -1,0 +1,56 @@
+spring:
+  application:
+    name: aiaiai-phase2
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      database: 0
+      timeout: 5s
+
+aiaiai:
+  llm:
+    base-url: ${DEEPSEEK_BASE_URL:https://api.deepseek.com}
+    api-key: ${DEEPSEEK_API_KEY:}
+    model-name: ${DEEPSEEK_MODEL:deepseek-chat}
+    temperature: 0.7
+    max-tokens: 4096
+    timeout-seconds: 120
+    log-requests: true
+    log-responses: true
+
+  embedding:
+    base-url: ${EMBEDDING_BASE_URL:https://dashscope.aliyuncs.com/compatible-mode/v1}
+    api-key: ${EMBEDDING_API_KEY:}
+    model-name: ${EMBEDDING_MODEL:text-embedding-v3}
+    dimensions: 1024
+
+  pinecone:
+    api-key: ${PINECONE_API_KEY:}
+    index: ${PINECONE_INDEX:aiaiai-knowledge}
+    namespace-knowledge: knowledge
+    namespace-memory: memory
+    cloud: AWS
+    region: us-east-1
+    dimension: ${PINECONE_DIMENSION:1024}
+  memory:
+    short-term:
+      max-messages: 20
+      ttl-days: 7
+    long-term:
+      min-score: 0.75
+
+  ingestion:
+    max-segment-size: 800
+    max-overlap-size: 100
+    pdf-directory: ${PDF_DIRECTORY:./papers}
+
+  retrieval:
+    top-k: 5
+    min-score: 0.0
+
+logging:
+  level:
+    com.aiaiai: DEBUG
+    dev.langchain4j: DEBUG
