@@ -4,6 +4,7 @@ import dev.langchain4j.data.segment.TextSegment;
 import dev.langchain4j.store.embedding.EmbeddingStore;
 import dev.langchain4j.store.embedding.pinecone.PineconeEmbeddingStore;
 import dev.langchain4j.store.embedding.pinecone.PineconeServerlessIndexConfig;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -52,6 +53,22 @@ public class PineconeConfig {
                 .apiKey(apiKey)
                 .index(index)
                 .nameSpace(memoryNamespace)
+                .createIndex(PineconeServerlessIndexConfig.builder()
+                        .cloud(cloud)
+                        .region(region)
+                        .dimension(dimension)
+                        .build())
+                .build();
+    }
+
+    @Bean(name = "knowledgeStoreV2")
+    @Qualifier("knowledgeStoreV2")
+    public EmbeddingStore<TextSegment> knowledgeStoreV2(
+            @Value("${aiaiai.pinecone.namespace-knowledge-v2}") String knowledgeNamespaceV2) {
+        return PineconeEmbeddingStore.builder()
+                .apiKey(apiKey)
+                .index(index)
+                .nameSpace(knowledgeNamespaceV2)
                 .createIndex(PineconeServerlessIndexConfig.builder()
                         .cloud(cloud)
                         .region(region)

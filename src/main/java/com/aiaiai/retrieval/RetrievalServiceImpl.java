@@ -1,6 +1,7 @@
 package com.aiaiai.retrieval;
 
 import com.aiaiai.controller.dto.RetrievalSnippet;
+import dev.langchain4j.data.document.Metadata;
 import dev.langchain4j.data.embedding.Embedding;
 import dev.langchain4j.data.segment.TextSegment;
 import dev.langchain4j.model.embedding.EmbeddingModel;
@@ -24,28 +25,66 @@ public class RetrievalServiceImpl implements RetrievalService {
 
     private static final Logger log = LoggerFactory.getLogger(RetrievalServiceImpl.class);
     private static final Pattern RESULT_PATTERN =
-            Pattern.compile("--- 结果 \\d+/\\d+ \\(相关度: ([\\d.]+), 置信度: (\\w+)\\) ---\\n([\\s\\S]*?)(?=\\n--- 结果 \\d+ |\\n?$)");
+            Pattern.compile("--- 结果 \\d+/\\d+ \\(相关度: ([\\d.]+), 置信度: (\\w+)(?:, 章节: .*?)?\\) ---\\n([\\s\\S]*?)(?=\\n--- 结果 \\d+ |\\n?$)");
 
     private final EmbeddingModel embeddingModel;
+    private final EmbeddingModel embeddingModelV2;
     private final EmbeddingStore<TextSegment> knowledgeStore;
+    private final EmbeddingStore<TextSegment> knowledgeStoreV2;
     private final int topK;
-    private final double minScore;
+    private final double minScore;          // Pinecone 层过滤（0.0=不做过滤，让 Java 层接管）
+    private final double minScoreJava;       // V1 Java 层二次过滤阈值
+    private final double highConfidence;     // V1 HIGH 置信度门槛
+    private final double minScoreJavaV2;     // V2 Java 层二次过滤阈值
+    private final double highConfidenceV2;   // V2 HIGH 置信度门槛
+    private final String embeddingVersion;
 
     public RetrievalServiceImpl(
             EmbeddingModel embeddingModel,
+            @Qualifier("embeddingModelV2") EmbeddingModel embeddingModelV2,
             @Qualifier("knowledgeStore") EmbeddingStore<TextSegment> knowledgeStore,
+            @Qualifier("knowledgeStoreV2") EmbeddingStore<TextSegment> knowledgeStoreV2,
             @Value("${aiaiai.retrieval.top-k}") int topK,
-            @Value("${aiaiai.retrieval.min-score}") double minScore) {
+            @Value("${aiaiai.retrieval.min-score}") double minScore,
+            @Value("${aiaiai.retrieval.min-score-java}") double minScoreJava,
+            @Value("${aiaiai.retrieval.high-confidence}") double highConfidence,
+            @Value("${aiaiai.retrieval.min-score-java-v2}") double minScoreJavaV2,
+            @Value("${aiaiai.retrieval.high-confidence-v2}") double highConfidenceV2,
+            @Value("${aiaiai.retrieval.embedding-version}") String embeddingVersion) {
         this.embeddingModel = embeddingModel;
+        this.embeddingModelV2 = embeddingModelV2;
         this.knowledgeStore = knowledgeStore;
+        this.knowledgeStoreV2 = knowledgeStoreV2;
         this.topK = topK;
         this.minScore = minScore;
+        this.minScoreJava = minScoreJava;
+        this.highConfidence = highConfidence;
+        this.minScoreJavaV2 = minScoreJavaV2;
+        this.highConfidenceV2 = highConfidenceV2;
+        this.embeddingVersion = embeddingVersion;
+    }
+
+    private EmbeddingModel activeModel() {
+        return "v2".equals(embeddingVersion) ? embeddingModelV2 : embeddingModel;
+    }
+
+    private EmbeddingStore<TextSegment> activeStore() {
+        return "v2".equals(embeddingVersion) ? knowledgeStoreV2 : knowledgeStore;
+    }
+
+    private double effectiveMinScore() {
+        return "v2".equals(embeddingVersion) ? minScoreJavaV2 : minScoreJava;
+    }
+
+    private double effectiveHighConfidence() {
+        return "v2".equals(embeddingVersion) ? highConfidenceV2 : highConfidence;
     }
 
     @Override
     public String search(String query) {
-        Embedding queryEmbedding = embeddingModel.embed(query).content();
-        EmbeddingSearchResult<TextSegment> result = knowledgeStore.search(
+        Embedding queryEmbedding = activeModel().embed(query).content();
+        // minScore 是 Pinecone 层过滤（0.0），Java 层过滤用 effectiveMinScore()
+        EmbeddingSearchResult<TextSegment> result = activeStore().search(
                 EmbeddingSearchRequest.builder()
                         .queryEmbedding(queryEmbedding)
                         .maxResults(topK)
@@ -61,10 +100,10 @@ public class RetrievalServiceImpl implements RetrievalService {
             return "[检索结果] 未在知识库中找到相关内容。";
         }
 
-        // Java 层二次过滤，只喂 ≥0.70 的结果给 LLM
+        double threshold = effectiveMinScore();
         List<EmbeddingMatch<TextSegment>> qualified = new ArrayList<>();
         for (EmbeddingMatch<TextSegment> match : matches) {
-            if (match.score() >= 0.70) {
+            if (match.score() >= threshold) {
                 qualified.add(match);
             }
         }
@@ -76,8 +115,10 @@ public class RetrievalServiceImpl implements RetrievalService {
         StringBuilder sb = new StringBuilder("[知识库检索结果]\n");
         for (int i = 0; i < total; i++) {
             EmbeddingMatch<TextSegment> match = qualified.get(i);
-            sb.append(String.format("--- 结果 %d/%d (相关度: %.2f, 置信度: %s) ---\n",
-                    i + 1, total, match.score(), normalizeConfidence(match.score())));
+            String section = labelOf(match);
+            sb.append(String.format("--- 结果 %d/%d (相关度: %.2f, 置信度: %s, 章节: %s) ---\n",
+                    i + 1, total, match.score(), normalizeConfidence(match.score()),
+                    section.isEmpty() ? "—" : section));
             sb.append(match.embedded().text()).append("\n");
         }
         return sb.toString();
@@ -98,10 +139,17 @@ public class RetrievalServiceImpl implements RetrievalService {
         return snippets;
     }
 
+    private String labelOf(EmbeddingMatch<TextSegment> match) {
+        Metadata meta = match.embedded().metadata();
+        if (meta == null) return "";
+        String section = meta.getString("section");
+        return section != null ? section : "";
+    }
+
     @Override
     public String normalizeConfidence(double score) {
-        if (score >= 0.85) return "HIGH";
-        if (score >= 0.70) return "MEDIUM";
+        if (score >= effectiveHighConfidence()) return "HIGH";
+        if (score >= effectiveMinScore()) return "MEDIUM";
         return "LOW";
     }
 }

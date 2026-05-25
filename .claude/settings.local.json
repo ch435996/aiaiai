@@ -2,7 +2,15 @@
   "permissions": {
     "allow": [
       "Bash(mkdir -p __TRACKED_VAR__/.claude/skills)",
-      "Bash(cp -r .claude/skills/session-summary __TRACKED_VAR__/.claude/skills/)"
+      "Bash(cp -r .claude/skills/session-summary __TRACKED_VAR__/.claude/skills/)",
+      "Bash(mvn compile *)",
+      "Bash(jps -l)",
+      "Bash(taskkill //F //PID 34044)",
+      "Bash(mvn spring-boot:run -q)",
+      "Bash(curl -s 'http://localhost:8080/api/sessions')",
+      "Bash(curl -s 'http://localhost:8080/api/chat' -H 'Content-Type: application/json' -d @/tmp/req5.json)",
+      "Bash(curl -s 'http://localhost:8080/api/sessions/v5/messages')",
+      "Bash(tasklist)"
     ]
   }
 }

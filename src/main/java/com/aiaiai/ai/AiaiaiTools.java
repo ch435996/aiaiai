@@ -11,18 +11,24 @@ public class AiaiaiTools {
 
     private final RetrievalService retrievalService;
     private final MemoryService memoryService;
+    private final QueryRewriter queryRewriter;
 
-    public AiaiaiTools(RetrievalService retrievalService, MemoryService memoryService) {
+    public AiaiaiTools(RetrievalService retrievalService, MemoryService memoryService,
+                       QueryRewriter queryRewriter) {
         this.retrievalService = retrievalService;
         this.memoryService = memoryService;
+        this.queryRewriter = queryRewriter;
     }
 
     @Tool("检索三维重建/点云补全知识库。当用户询问论文方法、网络结构、损失函数、训练策略、"
             + "数据集、指标、实验结论或方法对比时调用。不可用于闲聊或偏好记忆写入。")
     public String searchKnowledge(
-            @P(value = "检索查询词，提取用户问题中的关键概念、方法名或任务描述", required = true)
+            @P(value = "检索查询词。归纳对比类问题（有哪些/对比/区别/优缺点/分类）使用综述关键词"
+                    + "(survey/comparison/taxonomy/overview)搭配具体方法名；细节类问题使用精确方法名和模块名。"
+                    + "禁止只输入单一方法名——即使是定向问题也要包含任务描述", required = true)
             String query) {
-        return retrievalService.search(query);
+        String rewritten = queryRewriter.rewrite(query);
+        return retrievalService.search(rewritten);
     }
 
     @Tool("将信息保存到长期记忆。仅在用户明确要求记住某事、透露课题组稳定偏好"
@@ -39,6 +45,7 @@ public class AiaiaiTools {
     public String recallMemory(
             @P(value = "用于搜索长期记忆的查询词", required = true)
             String query) {
-        return memoryService.recall(query);
+        String rewritten = queryRewriter.rewrite(query);
+        return memoryService.recall(rewritten);
     }
 }

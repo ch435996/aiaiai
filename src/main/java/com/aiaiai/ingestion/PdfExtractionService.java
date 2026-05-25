@@ -18,6 +18,8 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 @Service
 public class PdfExtractionService {
@@ -26,6 +28,19 @@ public class PdfExtractionService {
 
     private static final long MAX_FILE_SIZE = 100 * 1024 * 1024; // 100MB
     private static final int EXTRACTION_TIMEOUT_SECONDS = 30;
+
+    private static final Pattern REFERENCE_HEADER = Pattern.compile(
+        "(?<=\\n\\n)(References|REFERENCES|Bibliography|BIBLIOGRAPHY|"
+        + "References and Notes|Acknowledgments|ACKNOWLEDGMENTS|"
+        + "参考文献|文献)"
+        + "(\\s|$)"
+    );
+
+    // 保护 LaTeX 显示公式：$$...$$ 和 \[...\]
+    private static final Pattern MATH_DISPLAY = Pattern.compile(
+        Pattern.quote("$$") + "(.*?)" + Pattern.quote("$$"), Pattern.DOTALL);
+    private static final Pattern MATH_BRACKET = Pattern.compile(
+        Pattern.quote("\\[") + "(.*?)" + Pattern.quote("\\]"), Pattern.DOTALL);
 
     private final ExecutorService executor = Executors.newCachedThreadPool();
 
@@ -78,7 +93,113 @@ public class PdfExtractionService {
         PDFTextStripper stripper = new PDFTextStripper();
         stripper.setSortByPosition(true);
         stripper.setAddMoreFormatting(false);
-        return stripper.getText(document);
+        String raw = stripper.getText(document);
+        return removeReferences(cleanText(raw));
+    }
+
+    /** 清洗 PDF 提取文本：修复物理断行、去除页眉页码、保护 LaTeX 公式 */
+    private String cleanText(String raw) {
+        String text = raw.replace("\r\n", "\n").replace("\r", "\n");
+        text = protectMathBlocks(text);
+        text = detectParagraphBreaks(text);
+        text = text.replaceAll("\n{3,}", "\n\n");
+
+        String[] paragraphs = text.split("\n\n");
+        StringBuilder result = new StringBuilder();
+
+        for (String para : paragraphs) {
+            String cleaned = para.replace("\n", " ")
+                    .replaceAll("\\s+", " ")
+                    .trim();
+            if (cleaned.isEmpty()) continue;
+            if (isNoise(cleaned)) continue;
+            result.append(cleaned).append("\n\n");
+        }
+        return result.toString().trim();
+    }
+
+    /**
+     * PDFBox 提取的文本通常每行一个 \n，不区分段落内换行和段落间换行。
+     * 三重启发式：①空行 → 段落边界；②上一行句末标点 + 下一行大写/数字开头 → 段落边界；
+     * ③下一行自身像 section header → 段落边界。
+     */
+    private String detectParagraphBreaks(String text) {
+        String[] lines = text.split("\n", -1);
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < lines.length; i++) {
+            sb.append(lines[i]);
+            if (i < lines.length - 1) {
+                String cur = lines[i].trim();
+                String nxt = (i + 1 < lines.length) ? lines[i + 1].trim() : "";
+                if (cur.isEmpty() || nxt.isEmpty()) {
+                    sb.append("\n\n");
+                } else if (isParaBoundary(cur, nxt) || looksLikeSectionStart(nxt)) {
+                    sb.append("\n\n");
+                } else {
+                    sb.append("\n");
+                }
+            }
+        }
+        return sb.toString();
+    }
+
+    /** 判断当前行与下一行之间是否为段落边界 */
+    private boolean isParaBoundary(String curLine, String nextLine) {
+        char last = curLine.charAt(curLine.length() - 1);
+        if (last != '.' && last != '?' && last != '!' && last != '"' && last != ')' && last != ']')
+            return false;
+        char first = nextLine.charAt(0);
+        return Character.isUpperCase(first) || Character.isDigit(first)
+                || first == '[' || first == '(';
+    }
+
+    /** 快速判断一行是否像 section header（编号模式或常见章节词） */
+    private boolean looksLikeSectionStart(String line) {
+        if (line.length() > 90) return false;
+        // 编号模式：3. / 3.1 / 3.1.1 / IV.
+        if (line.matches("^\\d+(?:\\.\\d+)*\\.?\\s+[A-Z].*")) return true;
+        if (line.matches("^[IVX]+\\.\\s+[A-Z].*")) return true;
+        // 常见章节词开头
+        String lower = line.toLowerCase();
+        String[] starts = {"abstract", "introduction", "related work", "background",
+            "preliminaries", "method", "experiment", "result", "conclusion",
+            "discussion", "appendix", "supplementary", "acknowledgment", "reference",
+            "bibliography", "dataset", "evaluation", "overview", "summary"};
+        for (String s : starts) {
+            if (lower.startsWith(s)) return true;
+        }
+        return false;
+    }
+
+    /** 保护 LaTeX 数学块：将内部换行替换为空格，外围加空行隔离，避免行合并破坏公式 */
+    private String protectMathBlocks(String text) {
+        text = MATH_DISPLAY.matcher(text).replaceAll(mr -> {
+            String inner = mr.group(1).replace("\n", " ").trim();
+            return "\n\n$$\n" + inner + "\n$$\n\n";
+        });
+        text = MATH_BRACKET.matcher(text).replaceAll(mr -> {
+            String inner = mr.group(1).replace("\n", " ").trim();
+            return "\n\n\\[\n" + inner + "\n\\]\n\n";
+        });
+        return text;
+    }
+
+    /** 过滤页眉、页码、版权声明等噪声行 */
+    private boolean isNoise(String text) {
+        String t = text.trim();
+        if (t.matches("^\\d{1,4}$")) return true;
+        if (t.length() < 20 && t.contains("Copyright")) return true;
+        if (t.matches("^arXiv:\\d+\\.\\d+.*")) return true;
+        return false;
+    }
+
+    /** 截断参考文献/致谢章节（匹配作为独立章节标题的 header，避免误截正文中的提及） */
+    private String removeReferences(String text) {
+        Matcher m = REFERENCE_HEADER.matcher(text);
+        if (m.find()) {
+            return text.substring(0, m.start()).trim();
+        }
+        return text;
     }
 
     private void validateFile(File file) throws IOException {

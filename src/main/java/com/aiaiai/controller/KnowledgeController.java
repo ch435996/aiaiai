@@ -5,6 +5,7 @@ import com.aiaiai.ingestion.PdfExtractionService;
 import dev.langchain4j.data.document.Document;
 import dev.langchain4j.data.document.Metadata;
 import dev.langchain4j.store.embedding.EmbeddingStoreIngestor;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -20,16 +21,20 @@ import java.util.Map;
 public class KnowledgeController {
 
     private final EmbeddingStoreIngestor ingestor;
+    private final EmbeddingStoreIngestor ingestorV2;
     private final PdfExtractionService pdfExtractionService;
 
     public KnowledgeController(EmbeddingStoreIngestor ingestor,
+                               @Qualifier("embeddingStoreIngestorV2") EmbeddingStoreIngestor ingestorV2,
                                PdfExtractionService pdfExtractionService) {
         this.ingestor = ingestor;
+        this.ingestorV2 = ingestorV2;
         this.pdfExtractionService = pdfExtractionService;
     }
 
     @PostMapping("/ingest")
-    public ResponseEntity<Map<String, Object>> ingest(@RequestBody IngestRequest request) {
+    public ResponseEntity<Map<String, Object>> ingest(@RequestBody IngestRequest request,
+                                                       @RequestParam(value = "version", required = false, defaultValue = "v1") String version) {
         Metadata metadata = new Metadata();
         if (request.getTitle() != null && !request.getTitle().isBlank()) {
             metadata.put("title", request.getTitle());
@@ -39,11 +44,13 @@ public class KnowledgeController {
         }
 
         Document document = Document.from(request.getContent(), metadata);
-        ingestor.ingest(document);
+        EmbeddingStoreIngestor target = "v2".equals(version) ? ingestorV2 : ingestor;
+        target.ingest(document);
 
         return ResponseEntity.ok(Map.of(
                 "status", "ok",
-                "message", "文档已成功摄入知识库"
+                "message", "文档已成功摄入知识库",
+                "version", version
         ));
     }
 
@@ -51,7 +58,8 @@ public class KnowledgeController {
     public ResponseEntity<Map<String, Object>> ingestPdf(
             @RequestParam("file") MultipartFile file,
             @RequestParam(value = "title", required = false) String title,
-            @RequestParam(value = "source", required = false) String source) {
+            @RequestParam(value = "source", required = false) String source,
+            @RequestParam(value = "version", required = false, defaultValue = "v1") String version) {
         try {
             String text = pdfExtractionService.extract(file.getInputStream());
             if (text.isBlank()) {
@@ -70,13 +78,15 @@ public class KnowledgeController {
             }
 
             Document document = Document.from(text, metadata);
-            ingestor.ingest(document);
+            EmbeddingStoreIngestor target = "v2".equals(version) ? ingestorV2 : ingestor;
+            target.ingest(document);
 
             return ResponseEntity.ok(Map.of(
                     "status", "ok",
                     "message", "PDF 已成功摄入知识库",
                     "title", docTitle,
-                    "chars", text.length()
+                    "chars", text.length(),
+                    "version", version
             ));
         } catch (Exception e) {
             return ResponseEntity.internalServerError().body(Map.of(

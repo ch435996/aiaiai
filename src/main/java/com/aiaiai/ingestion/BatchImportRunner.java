@@ -5,6 +5,7 @@ import dev.langchain4j.data.document.Metadata;
 import dev.langchain4j.store.embedding.EmbeddingStoreIngestor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
@@ -24,14 +25,20 @@ public class BatchImportRunner implements ApplicationRunner {
 
     private final PdfExtractionService pdfExtractionService;
     private final EmbeddingStoreIngestor ingestor;
+    private final EmbeddingStoreIngestor ingestorV2;
 
     @Value("${aiaiai.ingestion.pdf-directory}")
     private String pdfDirectory;
 
+    @Value("${aiaiai.retrieval.embedding-version:v1}")
+    private String embeddingVersion;
+
     public BatchImportRunner(PdfExtractionService pdfExtractionService,
-                             EmbeddingStoreIngestor ingestor) {
+                             EmbeddingStoreIngestor ingestor,
+                             @Qualifier("embeddingStoreIngestorV2") EmbeddingStoreIngestor ingestorV2) {
         this.pdfExtractionService = pdfExtractionService;
         this.ingestor = ingestor;
+        this.ingestorV2 = ingestorV2;
     }
 
     @Override
@@ -49,9 +56,11 @@ public class BatchImportRunner implements ApplicationRunner {
         }
 
         Arrays.sort(pdfFiles);
+        EmbeddingStoreIngestor target = "v2".equals(embeddingVersion) ? ingestorV2 : ingestor;
         log.info("=== Batch PDF Import ===");
         log.info("Directory: {}", pdfDirectory);
         log.info("Files found: {}", pdfFiles.length);
+        log.info("Version: {}", embeddingVersion);
 
         int success = 0;
         int failed = 0;
@@ -79,7 +88,7 @@ public class BatchImportRunner implements ApplicationRunner {
                 metadata.put("source", pdfFile.getAbsolutePath());
 
                 Document document = Document.from(text, metadata);
-                ingestor.ingest(document);
+                target.ingest(document);
 
                 success++;
                 log.info("Ingested [{}/{}]: {} ({} chars)",

@@ -1,6 +1,10 @@
 spring:
   application:
     name: aiaiai-phase2
+  servlet:
+    multipart:
+      max-file-size: 50MB
+      max-request-size: 50MB
   data:
     redis:
       host: ${REDIS_HOST:localhost}
@@ -26,11 +30,18 @@ aiaiai:
     model-name: ${EMBEDDING_MODEL:text-embedding-v3}
     dimensions: 1024
 
+  embedding-v2:
+    base-url: ${EMBEDDING_V2_BASE_URL:https://dashscope.aliyuncs.com/compatible-mode/v1}
+    api-key: ${EMBEDDING_V2_API_KEY:${EMBEDDING_API_KEY:}}
+    model-name: ${EMBEDDING_V2_MODEL:text-embedding-v4}
+    dimensions: ${EMBEDDING_V2_DIMENSIONS:1024}
+
   pinecone:
     api-key: ${PINECONE_API_KEY:}
     index: ${PINECONE_INDEX:aiaiai-knowledge}
     namespace-knowledge: knowledge
     namespace-memory: memory
+    namespace-knowledge-v2: knowledge_v2
     cloud: AWS
     region: us-east-1
     dimension: ${PINECONE_DIMENSION:1024}
@@ -42,13 +53,22 @@ aiaiai:
       min-score: 0.75
 
   ingestion:
-    max-segment-size: 800
-    max-overlap-size: 100
+    max-segment-size: 1000
+    max-overlap-size: 80
     pdf-directory: ${PDF_DIRECTORY:./papers}
+
+  ingestion-v2:
+    max-segment-size: ${INGESTION_V2_SEGMENT_SIZE:1000}
+    max-overlap-size: ${INGESTION_V2_OVERLAP_SIZE:80}
 
   retrieval:
     top-k: 5
     min-score: 0.0
+    embedding-version: ${RETRIEVAL_EMBEDDING_VERSION:v2}
+    min-score-java: ${RETRIEVAL_MIN_SCORE:0.70}
+    high-confidence: ${RETRIEVAL_HIGH_CONFIDENCE:0.85}
+    min-score-java-v2: ${RETRIEVAL_MIN_SCORE_V2:0.70}
+    high-confidence-v2: ${RETRIEVAL_HIGH_CONFIDENCE_V2:0.85}
 
 logging:
   level:
