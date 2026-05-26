@@ -70,6 +70,11 @@ aiaiai:
     min-score-java-v2: ${RETRIEVAL_MIN_SCORE_V2:0.70}
     high-confidence-v2: ${RETRIEVAL_HIGH_CONFIDENCE_V2:0.85}
 
+  reranker:
+    base-url: ${RERANKER_BASE_URL:https://dashscope.aliyuncs.com}
+    api-key: ${RERANKER_API_KEY:${EMBEDDING_V2_API_KEY:${EMBEDDING_API_KEY:}}}
+    model-name: ${RERANKER_MODEL:gte-rerank}
+
 logging:
   level:
     com.aiaiai: DEBUG
