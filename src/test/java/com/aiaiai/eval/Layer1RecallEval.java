@@ -22,7 +22,11 @@ import java.util.*;
  * Layer 1: Dense Retrieval Evaluation — 50-query ablation test.
  *
  * Metrics per query path (raw vs QueryRewriter-rewritten):
- *   Recall@5, Recall@20, MRR, Precision@5
+ *   Hit@K, CappedR@5, CappedR@20, MRR, Precision@5
+ *
+ * Scoring strategy per multiTarget flag:
+ *   single-target → Hit@K (binary: found or not)
+ *   multi-target  → Capped Recall@K (hits / min(|GT|, K))
  *
  * Boundary queries (out-of-scope): measured by top-1 score distribution
  * rather than recall, since no ground truth exists.
@@ -51,7 +55,8 @@ public class Layer1RecallEval {
             只输出改写后的查询词，不要任何解释。""";
 
     record QResult(String query, String rewritten, boolean hit5, boolean hit20,
-                   double mrr, int gtIn5, int gtIn20, double top1Score) {}
+                   double mrr, int gtIn5, int gtIn20, double top1Score,
+                   double cappedR5, double cappedR20) {}
 
     @Test
     void evaluate() {
@@ -104,7 +109,7 @@ public class Layer1RecallEval {
                         .queryEmbedding(emb).maxResults(20).minScore(0.0).build());
                 rawResults.add(evaluate(eq, eq.query(), res.matches()));
             } catch (Exception e) {
-                rawResults.add(new QResult(eq.query(), eq.query(), false, false, 0, 0, 0, 0));
+                rawResults.add(new QResult(eq.query(), eq.query(), false, false, 0, 0, 0, 0, 0.0, 0.0));
             }
 
             // Rewritten path
@@ -116,7 +121,7 @@ public class Layer1RecallEval {
                         .queryEmbedding(emb).maxResults(20).minScore(0.0).build());
                 rewResults.add(evaluate(eq, rewritten, res.matches()));
             } catch (Exception e) {
-                rewResults.add(new QResult(eq.query(), rewritten, false, false, 0, 0, 0, 0));
+                rewResults.add(new QResult(eq.query(), rewritten, false, false, 0, 0, 0, 0, 0.0, 0.0));
             }
             rewrittenTexts.add(rewritten);
         }
@@ -155,16 +160,19 @@ public class Layer1RecallEval {
         boolean hit5 = false, hit20 = false;
         int gtIn5 = 0, gtIn20 = 0;
         double top1 = matches.isEmpty() ? 0 : matches.get(0).score();
+        double cappedR5 = 0, cappedR20 = 0;
 
         String[] gt = eq.groundTruth();
         if (gt != null) {
+            Set<String> uniqueTitlesIn5 = new HashSet<>();
+            Set<String> uniqueTitlesIn20 = new HashSet<>();
             for (int i = 0; i < matches.size(); i++) {
                 var meta = matches.get(i).embedded().metadata();
                 String title = meta != null ? meta.getString("title") : null;
                 if (title != null && matchesGt(title, gt)) {
                     if (firstHitPos < 0) firstHitPos = i + 1;
-                    if (i < 5) gtIn5++;
-                    gtIn20++;
+                    if (i < 5) { gtIn5++; uniqueTitlesIn5.add(title); }
+                    gtIn20++; uniqueTitlesIn20.add(title);
                 }
             }
             if (firstHitPos > 0) {
@@ -172,8 +180,19 @@ public class Layer1RecallEval {
                 hit20 = true;
                 hit5 = firstHitPos <= 5;
             }
+
+            if (eq.multiTarget()) {
+                int denom5 = Math.min(gt.length, 5);
+                int denom20 = Math.min(gt.length, 20);
+                cappedR5 = denom5 > 0 ? (double) uniqueTitlesIn5.size() / denom5 : 0;
+                cappedR20 = denom20 > 0 ? (double) uniqueTitlesIn20.size() / denom20 : 0;
+            } else {
+                cappedR5 = gtIn5 > 0 ? 1.0 : 0.0;
+                cappedR20 = gtIn20 > 0 ? 1.0 : 0.0;
+            }
         }
-        return new QResult(eq.query(), rewritten, hit5, hit20, mrr, gtIn5, gtIn20, top1);
+        return new QResult(eq.query(), rewritten, hit5, hit20, mrr, gtIn5, gtIn20, top1,
+                cappedR5, cappedR20);
     }
 
     private boolean matchesGt(String title, String[] gt) {
@@ -198,19 +217,20 @@ public class Layer1RecallEval {
 
     private void printInScopeTable(List<EvalQueries.EvalQuery> all,
                                     List<QResult> raw, List<QResult> rew) {
-        System.out.printf("%-4s %-35s %6s %6s %6s  %6s %6s %6s  %-35s%n",
-                "ID", "QUERY", "R@5", "R@20", "MRR", "R@5", "R@20", "MRR", "REWRITTEN");
-        System.out.println("-".repeat(135));
+        System.out.printf("%-4s %-3s %-30s %5s %6s %6s  %5s %6s %6s  %-30s%n",
+                "ID", "TGT", "QUERY", "HIT5", "CR5", "MRR", "HIT5", "CR5", "MRR", "REWRITTEN");
+        System.out.println("-".repeat(130));
         for (int i = 0; i < all.size(); i++) {
             var eq = all.get(i);
             if (eq.category() == EvalQueries.Category.BOUNDARY) continue;
             var r = raw.get(i);
             var w = rew.get(i);
-            System.out.printf("%-4s %-35s %5s  %5s  %5s  %5s  %5s  %5s  %-35s%n",
-                    eq.id(), trunc(eq.query(), 35),
-                    r.hit5 ? "HIT" : "MISS", r.hit20 ? "HIT" : "MISS", fmt(r.mrr),
-                    w.hit5 ? "HIT" : "MISS", w.hit20 ? "HIT" : "MISS", fmt(w.mrr),
-                    trunc(w.rewritten, 35));
+            String tgtFlag = eq.multiTarget() ? " M " : " S ";
+            System.out.printf("%-4s %-3s %-30s %5s %6s %6s  %5s %6s %6s  %-30s%n",
+                    eq.id(), tgtFlag, trunc(eq.query(), 30),
+                    r.hit5 ? "HIT" : "MIS", fmt(r.cappedR5), fmt(r.mrr),
+                    w.hit5 ? "HIT" : "MIS", fmt(w.cappedR5), fmt(w.mrr),
+                    trunc(w.rewritten, 30));
         }
     }
 
@@ -236,8 +256,8 @@ public class Layer1RecallEval {
     private void printAggregate(List<EvalQueries.EvalQuery> all,
                                  List<QResult> raw, List<QResult> rew,
                                  boolean boundary) {
-        double raw5 = 0, raw20 = 0, rawMrr = 0, rawPrec = 0;
-        double rew5 = 0, rew20 = 0, rewMrr = 0, rewPrec = 0;
+        double rawHit5 = 0, rawMrr = 0, rawPrec = 0, rawCapped5 = 0, rawCapped20 = 0;
+        double rewHit5 = 0, rewMrr = 0, rewPrec = 0, rewCapped5 = 0, rewCapped20 = 0;
         int n = 0;
         for (int i = 0; i < all.size(); i++) {
             var eq = all.get(i);
@@ -245,63 +265,67 @@ public class Layer1RecallEval {
                 n++;
                 var r = raw.get(i);
                 var w = rew.get(i);
-                raw5 += r.hit5 ? 1 : 0;
-                raw20 += r.hit20 ? 1 : 0;
+                rawHit5 += r.hit5 ? 1 : 0;
                 rawMrr += r.mrr;
                 rawPrec += r.gtIn5 / 5.0;
-                rew5 += w.hit5 ? 1 : 0;
-                rew20 += w.hit20 ? 1 : 0;
+                rawCapped5 += r.cappedR5;
+                rawCapped20 += r.cappedR20;
+                rewHit5 += w.hit5 ? 1 : 0;
                 rewMrr += w.mrr;
                 rewPrec += w.gtIn5 / 5.0;
+                rewCapped5 += w.cappedR5;
+                rewCapped20 += w.cappedR20;
             }
         }
         if (n == 0) return;
-        raw5 /= n; raw20 /= n; rawMrr /= n; rawPrec /= n;
-        rew5 /= n; rew20 /= n; rewMrr /= n; rewPrec /= n;
+        rawHit5 /= n; rawMrr /= n; rawPrec /= n; rawCapped5 /= n; rawCapped20 /= n;
+        rewHit5 /= n; rewMrr /= n; rewPrec /= n; rewCapped5 /= n; rewCapped20 /= n;
 
-        System.out.printf("%-20s  %8s  %8s  %8s%n", "Metric", "RAW", "REWRITTEN", "DELTA");
-        System.out.println("-".repeat(50));
-        printRow("Recall@5", raw5, rew5);
-        printRow("Recall@20", raw20, rew20);
+        System.out.printf("%-22s  %8s  %8s  %8s%n", "Metric", "RAW", "REWRITTEN", "DELTA");
+        System.out.println("-".repeat(52));
+        printRow("Hit@5", rawHit5, rewHit5);
+        printRow("CappedR@5", rawCapped5, rewCapped5);
+        printRow("CappedR@20", rawCapped20, rewCapped20);
         printRow("MRR", rawMrr, rewMrr);
         printRow("Precision@5", rawPrec, rewPrec);
 
-        // Count improved/degraded
+        // Count improved/degraded (on CappedR@5)
         int improved = 0, degraded = 0;
         for (int i = 0; i < all.size(); i++) {
             var eq = all.get(i);
             if ((eq.category() == EvalQueries.Category.BOUNDARY) == boundary) {
-                if (rew.get(i).hit5 && !raw.get(i).hit5) improved++;
-                if (raw.get(i).hit5 && !rew.get(i).hit5) degraded++;
+                if (rew.get(i).cappedR5 > raw.get(i).cappedR5 + 0.001) improved++;
+                else if (rew.get(i).cappedR5 < raw.get(i).cappedR5 - 0.001) degraded++;
             }
         }
-        System.out.printf("Queries improved (R@5): %d  |  degraded: %d%n", improved, degraded);
+        System.out.printf("Queries improved (CappedR@5): %d  |  degraded: %d%n", improved, degraded);
     }
 
     private void printCategoryAggregate(EvalQueries.Category cat,
                                          List<EvalQueries.EvalQuery> all,
                                          List<QResult> raw, List<QResult> rew) {
-        double raw5 = 0, raw20 = 0, rawMrr = 0;
-        double rew5 = 0, rew20 = 0, rewMrr = 0;
+        double rawHit5 = 0, rawCapped5 = 0, rawMrr = 0;
+        double rewHit5 = 0, rewCapped5 = 0, rewMrr = 0;
         int n = 0;
         for (int i = 0; i < all.size(); i++) {
             if (all.get(i).category() == cat) {
                 n++;
-                raw5 += raw.get(i).hit5 ? 1 : 0;
-                raw20 += raw.get(i).hit20 ? 1 : 0;
+                rawHit5 += raw.get(i).hit5 ? 1 : 0;
+                rawCapped5 += raw.get(i).cappedR5;
                 rawMrr += raw.get(i).mrr;
-                rew5 += rew.get(i).hit5 ? 1 : 0;
-                rew20 += rew.get(i).hit20 ? 1 : 0;
+                rewHit5 += rew.get(i).hit5 ? 1 : 0;
+                rewCapped5 += rew.get(i).cappedR5;
                 rewMrr += rew.get(i).mrr;
             }
         }
         if (n == 0) return;
-        raw5 /= n; raw20 /= n; rawMrr /= n;
-        rew5 /= n; rew20 /= n; rewMrr /= n;
+        rawHit5 /= n; rawCapped5 /= n; rawMrr /= n;
+        rewHit5 /= n; rewCapped5 /= n; rewMrr /= n;
 
-        System.out.printf("%-22s n=%-2d  R@5: %5s → %5s  R@20: %5s → %5s  MRR: %5s → %5s%n",
+        System.out.printf("%-22s n=%-2d  Hit@5: %5s → %5s  CR5: %5s → %5s  MRR: %5s → %5s%n",
                 "[" + cat + "]", n,
-                pct(raw5), pct(rew5), pct(raw20), pct(rew20),
+                pct(rawHit5), pct(rewHit5),
+                fmt(rawCapped5), fmt(rewCapped5),
                 fmt(rawMrr), fmt(rewMrr));
     }
 
