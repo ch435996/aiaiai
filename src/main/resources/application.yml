@@ -49,6 +49,7 @@ aiaiai:
     short-term:
       max-messages: 20
       ttl-days: 7
+      session-data-dir: data/sessions
     long-term:
       min-score: 0.75
 
@@ -70,10 +71,111 @@ aiaiai:
     min-score-java-v2: ${RETRIEVAL_MIN_SCORE_V2:0.70}
     high-confidence-v2: ${RETRIEVAL_HIGH_CONFIDENCE_V2:0.85}
 
+  classifier:
+    boundary-keywords:
+      - 快速排序
+      - 冒泡排序
+      - 二叉树
+      - 蓝牙
+      - 请假邮件
+      - IDE推荐
+      - 代码编辑器
+      - 前端框架
+      - React
+      - Vue
+      - Gaussian Splatting
+      - SLAM
+      - B超
+      - 激光雷达
+      - Mesh转换
+      - 自动驾驶
+      - 目标检测
+      - 3D Gaussian
+      - 医学影像配准
+      - ICP配准
+      - 点云去噪
+      - 滤波算法
+      - 点云地图
+      - 定位
+    mixed-intent-triggers:
+      - 记住
+      - 记下来
+      - 存一下
+      - 顺便记
+      - 关注
+      - 偏好
+    broad-keywords:
+      - 最新进展
+      - SOTA
+      - state of the art
+      - 综述
+      - survey
+      - 技术路线
+      - 全景
+      - 有什么方法
+      - 最近
+    detail-seeking-keywords:
+      - 维度
+      - 多少个
+      - MLP
+      - 输入
+      - 输出
+      - 超参数
+      - 怎么
+      - 选了多少
+      - 模块
+    comparison-keywords:
+      - 区别
+      - 对比
+      - vs
+      - 比较
+      - 哪个好
+      - 差异
+      - 优缺点
+      - 有什么区别
+      - 有哪些
+      - 是什么
+    vague-ref-triggers:
+      - 不是.*的[那哪]个
+      - 上次说的
+      - 那个什么
+      - 另一个
+      - 之前那篇
+      - 还有.*什么
+      - 有个.*的
+      - 那个.*的
+    typo-corrections:
+      PointTr: PoinTr
+      SNet: SnowflakeNet
+      pct: point cloud
+      CD: Chamfer Distance
+      EMD: Earth Mover's Distance
+      SPD: Snowflake Point Deconvolution
+      SN: SnowflakeNet
+    oral-high-precision:
+      - 懒得看
+      - 行不行啊
+      - 太难懂了
+      - 太难了
+      - 帮我看看那个什么
+      - 哎
+    oral-soft-signals:
+      - 来着
+      - 到底
+      - 真是
+      - 好难
+      - 讲讲
+      - 吧
+      - 啊
+      - 呢
+
   reranker:
     base-url: ${RERANKER_BASE_URL:https://dashscope.aliyuncs.com}
     api-key: ${RERANKER_API_KEY:${EMBEDDING_V2_API_KEY:${EMBEDDING_API_KEY:}}}
     model-name: ${RERANKER_MODEL:gte-rerank}
+    high-confidence: 0.70
+    medium-confidence: 0.30
+    top-n-after-rerank: 5
 
 logging:
   level:

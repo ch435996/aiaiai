@@ -7,9 +7,15 @@ import java.util.List;
 public interface RetrievalService {
     String search(String query);
 
-    /** 从 search() 返回的文本中解析出结构化检索片段 */
+    String search(String query, int topK);
+
+    String rerankAndTruncate(String resultText, String query, int finalTopK);
+
+    SearchResult searchStructured(String query, int topK);
+
+    SearchResult rerankStructured(SearchResult result, String query, int finalTopK);
+
     List<RetrievalSnippet> extractSnippets(String resultText);
 
-    /** 将原始相关度归一化为 HIGH / MEDIUM / LOW */
     String normalizeConfidence(double score);
 }

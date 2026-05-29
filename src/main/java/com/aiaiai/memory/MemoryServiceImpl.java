@@ -11,6 +11,7 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
+import java.util.ArrayList;
 import java.util.List;
 
 @Service
@@ -37,6 +38,21 @@ public class MemoryServiceImpl implements MemoryService {
 
     @Override
     public String recall(String query) {
+        MemoryRecallResult result = recallStructured(query);
+        if (result.count() == 0) {
+            return "[长期记忆] 未找到相关记忆。";
+        }
+        StringBuilder sb = new StringBuilder("[长期记忆召回]\n");
+        for (var entry : result.memories()) {
+            sb.append(String.format("--- 记忆 %d (相关度: %.2f) ---\n",
+                    entry.index(), entry.score()));
+            sb.append(entry.text()).append("\n");
+        }
+        return sb.toString();
+    }
+
+    @Override
+    public MemoryRecallResult recallStructured(String query) {
         Embedding queryEmbedding = embeddingModel.embed(query).content();
         EmbeddingSearchResult<TextSegment> result = longTermMemoryStore.search(
                 EmbeddingSearchRequest.builder()
@@ -47,15 +63,15 @@ public class MemoryServiceImpl implements MemoryService {
 
         List<EmbeddingMatch<TextSegment>> matches = result.matches();
         if (matches.isEmpty()) {
-            return "[长期记忆] 未找到相关记忆。";
+            return new MemoryRecallResult(List.of(), 0);
         }
 
-        StringBuilder sb = new StringBuilder("[长期记忆召回]\n");
+        List<MemoryRecallResult.Entry> entries = new ArrayList<>();
         for (int i = 0; i < matches.size(); i++) {
             EmbeddingMatch<TextSegment> match = matches.get(i);
-            sb.append(String.format("--- 记忆 %d (相关度: %.2f) ---\n", i + 1, match.score()));
-            sb.append(match.embedded().text()).append("\n");
+            entries.add(new MemoryRecallResult.Entry(
+                    i + 1, match.score(), match.embedded().text()));
         }
-        return sb.toString();
+        return new MemoryRecallResult(entries, entries.size());
     }
 }

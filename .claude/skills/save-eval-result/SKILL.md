@@ -77,3 +77,4 @@ If the file already exists, prepend the new entry at the top (after the title) w
 - Do NOT save incomplete or partial results (wait for full eval output)
 - Do NOT overwrite historical runs — always prepend new runs
 - Do NOT include raw conversation noise — filter to structured data only
+- **Do NOT modify previously written content** — only prepend new evaluation results. 注意不要动之前已写入的内容，只把新的评测结果加进去。

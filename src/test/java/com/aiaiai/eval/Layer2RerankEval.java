@@ -59,11 +59,15 @@ public class Layer2RerankEval {
 
     record RowResult(String id, int denseRank, int rerankRank,
                       boolean denseHit5, boolean rerankHit5,
-                      double denseMrr, double rerankMrr) {}
+                      double denseMrr, double rerankMrr,
+                      int denseGtIn3, int denseGtIn5,
+                      int rerankGtIn3, int rerankGtIn5) {}
 
     record RewRowResult(String id, String rewritten, int denseRank, int rerankRank,
                          boolean denseHit5, boolean rerankHit5,
-                         double denseMrr, double rerankMrr) {}
+                         double denseMrr, double rerankMrr,
+                         int denseGtIn3, int denseGtIn5,
+                         int rerankGtIn3, int rerankGtIn5) {}
 
     // Collect all reranker scores for distribution analysis
     private final List<Double> allRerankScores = new ArrayList<>();
@@ -158,10 +162,17 @@ public class Layer2RerankEval {
                 double rerankMrr = rerankRank > 0 ? 1.0 / rerankRank : 0;
                 boolean rerankHit5 = rerankRank > 0;
 
+                // Precision: count GT hits in top-K
+                int denseGtIn3 = countGtInTopK(matches, gt, 3, null);
+                int denseGtIn5 = countGtInTopK(matches, gt, 5, null);
+                int rerankGtIn3 = countGtInTopK(matches, gt, 3, indices);
+                int rerankGtIn5 = countGtInTopK(matches, gt, 5, indices);
+
                 row = new RowResult(eq.id(), denseRank, rerankRank,
-                        denseHit5, rerankHit5, denseMrr, rerankMrr);
+                        denseHit5, rerankHit5, denseMrr, rerankMrr,
+                        denseGtIn3, denseGtIn5, rerankGtIn3, rerankGtIn5);
             } catch (Exception e) {
-                row = new RowResult(eq.id(), -1, -1, false, false, 0, 0);
+                row = new RowResult(eq.id(), -1, -1, false, false, 0, 0, 0, 0, 0, 0);
             }
             results.add(row);
         }
@@ -196,6 +207,8 @@ public class Layer2RerankEval {
         int total = results.size();
         double denseHit5Sum = 0, rerankHit5Sum = 0;
         double denseMrrSum = 0, rerankMrrSum = 0;
+        double densePrec3Sum = 0, densePrec5Sum = 0;
+        double rerankPrec3Sum = 0, rerankPrec5Sum = 0;
         int improved = 0, degraded = 0, same = 0;
 
         for (var r : results) {
@@ -203,6 +216,10 @@ public class Layer2RerankEval {
             if (r.rerankHit5) rerankHit5Sum++;
             denseMrrSum += r.denseMrr;
             rerankMrrSum += r.rerankMrr;
+            densePrec3Sum += r.denseGtIn3 / 3.0;
+            densePrec5Sum += r.denseGtIn5 / 5.0;
+            rerankPrec3Sum += r.rerankGtIn3 / 3.0;
+            rerankPrec5Sum += r.rerankGtIn5 / 5.0;
             if (r.rerankMrr > r.denseMrr + 0.001) improved++;
             else if (r.rerankMrr < r.denseMrr - 0.001) degraded++;
             else same++;
@@ -215,6 +232,14 @@ public class Layer2RerankEval {
                 "Recall@5", denseHit5Sum / total * 100,
                 rerankHit5Sum / total * 100,
                 (rerankHit5Sum - denseHit5Sum) / total * 100);
+        System.out.printf("%-18s %9.1f%% %9.1f%% %+9.1f%%%n",
+                "Precision@3", densePrec3Sum / total * 100,
+                rerankPrec3Sum / total * 100,
+                (rerankPrec3Sum - densePrec3Sum) / total * 100);
+        System.out.printf("%-18s %9.1f%% %9.1f%% %+9.1f%%%n",
+                "Precision@5", densePrec5Sum / total * 100,
+                rerankPrec5Sum / total * 100,
+                (rerankPrec5Sum - densePrec5Sum) / total * 100);
         System.out.printf("%-18s %10s %10s %10s%n",
                 "MRR@5", fmt(denseMrrSum / total), fmt(rerankMrrSum / total),
                 fmtDelta(rerankMrrSum - denseMrrSum, total));
@@ -345,6 +370,20 @@ public class Layer2RerankEval {
             if (title != null && matchesGt(title, gt)) return i + 1;
         }
         return -1;
+    }
+
+    /** Count how many of the top-K results (after optional rerank ordering) match any GT title. */
+    private int countGtInTopK(List<EmbeddingMatch<TextSegment>> matches, String[] gt, int k,
+                               List<Integer> rerankOrder) {
+        int count = 0;
+        int limit = Math.min(k, matches.size());
+        for (int i = 0; i < limit; i++) {
+            int idx = rerankOrder != null ? rerankOrder.get(i) : i;
+            var meta = matches.get(idx).embedded().metadata();
+            String title = meta != null ? meta.getString("title") : null;
+            if (title != null && matchesGt(title, gt)) count++;
+        }
+        return count;
     }
 
     private boolean matchesGt(String title, String[] gt) {
@@ -495,10 +534,16 @@ public class Layer2RerankEval {
                 double rerankMrr = rerankRank > 0 ? 1.0 / rerankRank : 0;
                 boolean rerankHit5 = rerankRank > 0;
 
+                int denseGtIn3 = countGtInTopK(matches, gt, 3, null);
+                int denseGtIn5 = countGtInTopK(matches, gt, 5, null);
+                int rerankGtIn3 = countGtInTopK(matches, gt, 3, indices);
+                int rerankGtIn5 = countGtInTopK(matches, gt, 5, indices);
+
                 row = new RewRowResult(eq.id(), rewritten, denseRank, rerankRank,
-                        denseHit5, rerankHit5, denseMrr, rerankMrr);
+                        denseHit5, rerankHit5, denseMrr, rerankMrr,
+                        denseGtIn3, denseGtIn5, rerankGtIn3, rerankGtIn5);
             } catch (Exception e) {
-                row = new RewRowResult(eq.id(), rewritten, -1, -1, false, false, 0, 0);
+                row = new RewRowResult(eq.id(), rewritten, -1, -1, false, false, 0, 0, 0, 0, 0, 0);
             }
             results.add(row);
         }
@@ -524,6 +569,8 @@ public class Layer2RerankEval {
         int total = results.size();
         double denseHit5Sum = 0, rerankHit5Sum = 0;
         double denseMrrSum = 0, rerankMrrSum = 0;
+        double densePrec3Sum = 0, densePrec5Sum = 0;
+        double rerankPrec3Sum = 0, rerankPrec5Sum = 0;
         int improved = 0, degraded = 0, same = 0;
 
         for (var r : results) {
@@ -531,6 +578,10 @@ public class Layer2RerankEval {
             if (r.rerankHit5) rerankHit5Sum++;
             denseMrrSum += r.denseMrr;
             rerankMrrSum += r.rerankMrr;
+            densePrec3Sum += r.denseGtIn3 / 3.0;
+            densePrec5Sum += r.denseGtIn5 / 5.0;
+            rerankPrec3Sum += r.rerankGtIn3 / 3.0;
+            rerankPrec5Sum += r.rerankGtIn5 / 5.0;
             if (r.rerankMrr > r.denseMrr + 0.001) improved++;
             else if (r.rerankMrr < r.denseMrr - 0.001) degraded++;
             else same++;
@@ -543,6 +594,14 @@ public class Layer2RerankEval {
                 "Recall@5", denseHit5Sum / total * 100,
                 rerankHit5Sum / total * 100,
                 (rerankHit5Sum - denseHit5Sum) / total * 100);
+        System.out.printf("%-18s %9.1f%% %9.1f%% %+9.1f%%%n",
+                "Precision@3", densePrec3Sum / total * 100,
+                rerankPrec3Sum / total * 100,
+                (rerankPrec3Sum - densePrec3Sum) / total * 100);
+        System.out.printf("%-18s %9.1f%% %9.1f%% %+9.1f%%%n",
+                "Precision@5", densePrec5Sum / total * 100,
+                rerankPrec5Sum / total * 100,
+                (rerankPrec5Sum - densePrec5Sum) / total * 100);
         System.out.printf("%-18s %10s %10s %10s%n",
                 "MRR@5", fmt(denseMrrSum / total), fmt(rerankMrrSum / total),
                 fmtDelta(rerankMrrSum - denseMrrSum, total));
@@ -639,3 +698,4 @@ public class Layer2RerankEval {
         System.out.printf("P90:    %.4f%n", p90);
         System.out.printf("Spread: %.4f (max-min)%n", max - min);
     }
+}

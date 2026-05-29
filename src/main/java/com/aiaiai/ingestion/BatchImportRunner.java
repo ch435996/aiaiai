@@ -1,5 +1,6 @@
 package com.aiaiai.ingestion;
 
+import com.aiaiai.routing.KnownPapersRegistry;
 import dev.langchain4j.data.document.Document;
 import dev.langchain4j.data.document.Metadata;
 import dev.langchain4j.store.embedding.EmbeddingStoreIngestor;
@@ -26,6 +27,7 @@ public class BatchImportRunner implements ApplicationRunner {
     private final PdfExtractionService pdfExtractionService;
     private final EmbeddingStoreIngestor ingestor;
     private final EmbeddingStoreIngestor ingestorV2;
+    private final KnownPapersRegistry knownPapersRegistry;
 
     @Value("${aiaiai.ingestion.pdf-directory}")
     private String pdfDirectory;
@@ -35,10 +37,12 @@ public class BatchImportRunner implements ApplicationRunner {
 
     public BatchImportRunner(PdfExtractionService pdfExtractionService,
                              EmbeddingStoreIngestor ingestor,
-                             @Qualifier("embeddingStoreIngestorV2") EmbeddingStoreIngestor ingestorV2) {
+                             @Qualifier("embeddingStoreIngestorV2") EmbeddingStoreIngestor ingestorV2,
+                             KnownPapersRegistry knownPapersRegistry) {
         this.pdfExtractionService = pdfExtractionService;
         this.ingestor = ingestor;
         this.ingestorV2 = ingestorV2;
+        this.knownPapersRegistry = knownPapersRegistry;
     }
 
     @Override
@@ -89,6 +93,7 @@ public class BatchImportRunner implements ApplicationRunner {
 
                 Document document = Document.from(text, metadata);
                 target.ingest(document);
+                knownPapersRegistry.register(pdfFile.getName());
 
                 success++;
                 log.info("Ingested [{}/{}]: {} ({} chars)",

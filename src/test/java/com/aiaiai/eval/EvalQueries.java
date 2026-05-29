@@ -45,7 +45,7 @@ public class EvalQueries {
                 "直接方法名 → 对应论文 top-1"));
         list.add(new EvalQuery("H2", "PoinTr 的网络结构",
                 Category.METHOD_NAME,
-                new String[]{"ICCV_2021 PoinTr"}, false,
+                new String[]{"PoinTr"}, false,
                 "直接方法名 → 对应论文 top-1"));
         list.add(new EvalQuery("H3", "FoldingNet 的点云补全方法",
                 Category.METHOD_NAME,
@@ -126,7 +126,7 @@ public class EvalQueries {
         // ── 混合意图 (6) — X1/X3/X5/X6 multi, X2/X4 single ──
         list.add(new EvalQuery("X1", "比较 SnowflakeNet 和 PoinTr 的损失函数，记住我偏好轻量模型",
                 Category.MIXED_INTENT,
-                new String[]{"SnowflakeNet", "ICCV_2021 PoinTr", "Survey_of_Point_Cloud_Completion"}, true,
+                new String[]{"SnowflakeNet", "PoinTr", "Survey_of_Point_Cloud_Completion"}, true,
                 "检索+记忆 → 应检索两篇论文"));
         list.add(new EvalQuery("X2", "ProtoComp的特征融合怎么做的？顺便记住我们组用CD做主要指标",
                 Category.MIXED_INTENT,
@@ -134,7 +134,7 @@ public class EvalQueries {
                 "检索+记忆 → ProtoComp"));
         list.add(new EvalQuery("X3", "PoinTr和PCN哪个效果更好？存一下我关注推理速度",
                 Category.MIXED_INTENT,
-                new String[]{"ICCV_2021 PoinTr", "PCN", "Survey_of_Point_Cloud_Completion"}, true,
+                new String[]{"PoinTr", "PCN", "Survey_of_Point_Cloud_Completion"}, true,
                 "对比+记忆 → 两篇论文"));
         list.add(new EvalQuery("X4", "SeedFormer的上采样模块怎么设计的，记下来F-score比CD重要",
                 Category.MIXED_INTENT,
@@ -155,21 +155,21 @@ public class EvalQueries {
                 new String[]{"SnowflakeNet"}, false,
                 "缩写SNet+模块缩写SPD → SnowflakeNet"));
         list.add(new EvalQuery("T2", "pct补全有什么方法",
-                Category.TYPO_VARIANT,
+                Category.BROAD,
                 new String[]{"Survey_of_Point_Cloud_Completion"}, false,
-                "拼音缩写pct → point cloud completion"));
+                "「有什么方法」为broad信号，pct缩写不主导意图"));
         list.add(new EvalQuery("T3", "PointTr的几何感知transformer",
                 Category.TYPO_VARIANT,
-                new String[]{"ICCV_2021 PoinTr"}, false,
+                new String[]{"PoinTr"}, false,
                 "拼写错误PointTr → PoinTr"));
         list.add(new EvalQuery("T4", "CD损失和EMD损失的区别是什么",
                 Category.TYPO_VARIANT,
                 new String[]{"Survey_of_Point_Cloud_Completion", "PCN", "PoinTr", "ProtoComp"}, false,
                 "缩写CD/EMD → 损失函数讨论"));
         list.add(new EvalQuery("T5", "PCN里的coarse-to-fine是怎么分的",
-                Category.TYPO_VARIANT,
+                Category.SPECIFIC,
                 new String[]{"PCN"}, false,
-                "缩写+技术细节 → PCN"));
+                "PCN是全论文名+细节提问 → SPECIFIC"));
         list.add(new EvalQuery("T6", "SN的skip-transformer是干什么的",
                 Category.TYPO_VARIANT,
                 new String[]{"SnowflakeNet"}, false,
@@ -204,7 +204,7 @@ public class EvalQueries {
                 "模块级细粒度 → SeedFormer具体chunk"));
         list.add(new EvalQuery("S2", "PoinTr的几何感知transformer和普通transformer有什么区别",
                 Category.SPECIFIC,
-                new String[]{"ICCV_2021 PoinTr"}, false,
+                new String[]{"PoinTr"}, false,
                 "架构细节对比 → PoinTr"));
         list.add(new EvalQuery("S3", "PCN用了几个MLP做coarse生成",
                 Category.SPECIFIC,
@@ -225,9 +225,9 @@ public class EvalQueries {
                 new String[]{"Survey_of_Point_Cloud_Completion"}, true,
                 "情绪化口语 → 至少命中Survey(保底)"));
         list.add(new EvalQuery("O2", "帮我看看那个什么diffusion的补全方法",
-                Category.ORAL_EMOTIONAL,
+                Category.VAGUE_REFERENCE,
                 new String[]{"DiPT", "PCDreamer", "PointDiffuse", "Repurposing", "Simba"}, true,
-                "口语化模糊 → diffusion论文"));
+                "模糊指代主导，口语前缀为次要信号"));
         list.add(new EvalQuery("O3", "讲讲PCN吧懒得看论文了",
                 Category.ORAL_EMOTIONAL,
                 new String[]{"PCN"}, false,

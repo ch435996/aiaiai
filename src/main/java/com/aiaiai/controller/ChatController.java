@@ -3,7 +3,7 @@ package com.aiaiai.controller;
 import com.aiaiai.controller.dto.ChatRequest;
 import com.aiaiai.controller.dto.ChatResponse;
 import com.aiaiai.controller.dto.MessageDto;
-import com.aiaiai.memory.RedisChatMemoryStore;
+import com.aiaiai.memory.HybridChatMemoryStore;
 import com.aiaiai.orchestrator.ChatOrchestrator;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -18,9 +18,9 @@ import java.util.UUID;
 public class ChatController {
 
     private final ChatOrchestrator orchestrator;
-    private final RedisChatMemoryStore memoryStore;
+    private final HybridChatMemoryStore memoryStore;
 
-    public ChatController(ChatOrchestrator orchestrator, RedisChatMemoryStore memoryStore) {
+    public ChatController(ChatOrchestrator orchestrator, HybridChatMemoryStore memoryStore) {
         this.orchestrator = orchestrator;
         this.memoryStore = memoryStore;
     }

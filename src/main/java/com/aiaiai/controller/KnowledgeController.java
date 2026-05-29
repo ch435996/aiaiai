@@ -2,6 +2,7 @@ package com.aiaiai.controller;
 
 import com.aiaiai.controller.dto.IngestRequest;
 import com.aiaiai.ingestion.PdfExtractionService;
+import com.aiaiai.routing.KnownPapersRegistry;
 import dev.langchain4j.data.document.Document;
 import dev.langchain4j.data.document.Metadata;
 import dev.langchain4j.store.embedding.EmbeddingStoreIngestor;
@@ -23,13 +24,16 @@ public class KnowledgeController {
     private final EmbeddingStoreIngestor ingestor;
     private final EmbeddingStoreIngestor ingestorV2;
     private final PdfExtractionService pdfExtractionService;
+    private final KnownPapersRegistry knownPapersRegistry;
 
     public KnowledgeController(EmbeddingStoreIngestor ingestor,
                                @Qualifier("embeddingStoreIngestorV2") EmbeddingStoreIngestor ingestorV2,
-                               PdfExtractionService pdfExtractionService) {
+                               PdfExtractionService pdfExtractionService,
+                               KnownPapersRegistry knownPapersRegistry) {
         this.ingestor = ingestor;
         this.ingestorV2 = ingestorV2;
         this.pdfExtractionService = pdfExtractionService;
+        this.knownPapersRegistry = knownPapersRegistry;
     }
 
     @PostMapping("/ingest")
@@ -46,6 +50,9 @@ public class KnowledgeController {
         Document document = Document.from(request.getContent(), metadata);
         EmbeddingStoreIngestor target = "v2".equals(version) ? ingestorV2 : ingestor;
         target.ingest(document);
+        if (request.getTitle() != null && !request.getTitle().isBlank()) {
+            knownPapersRegistry.register(request.getTitle());
+        }
 
         return ResponseEntity.ok(Map.of(
                 "status", "ok",
@@ -80,6 +87,7 @@ public class KnowledgeController {
             Document document = Document.from(text, metadata);
             EmbeddingStoreIngestor target = "v2".equals(version) ? ingestorV2 : ingestor;
             target.ingest(document);
+            knownPapersRegistry.register(docTitle);
 
             return ResponseEntity.ok(Map.of(
                     "status", "ok",
